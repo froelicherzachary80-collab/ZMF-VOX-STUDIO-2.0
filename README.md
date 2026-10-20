@@ -54,11 +54,10 @@ npm run e2e          # 24 end-to-end acceptance checks in headless Chromium (nee
 6. **AI Cover Studio** → import a song → separate → choose the singer → **Preview** (10–20 s) → **Render full vocal** → Mixer / Mastering / Export.
 
 ## The website (GitHub Pages, free)
-`.github/workflows/deploy-pages.yml` runs the unit tests, builds the site and publishes it on every push to `main` (or this feature branch).
-**One-time setup (repo owner):** GitHub → repository **Settings → Pages → Build and deployment → Source: "GitHub Actions"**. After the next push (or **Actions → "Test & deploy website" → Run workflow**), the site is at
-`https://froelicherzachary80-collab.github.io/ZMF-VOX-STUDIO-2.0/`.
-If the deploy job says the branch isn't allowed, either merge to `main` or add the branch under **Settings → Environments → github-pages → Deployment branches**.
-On iPhone, open the URL in Safari → Share → **Add to Home Screen**.
+Every push to `main` runs `.github/workflows/deploy-pages.yml`, which installs dependencies, runs the unit tests, builds the app and publishes `dist/` to GitHub Pages:
+**https://froelicherzachary80-collab.github.io/ZMF-VOX-STUDIO-2.0/**
+(The repository's **Settings → Pages → Source** must be **"GitHub Actions"**.) Re-deploy by hand from **Actions → "Build & deploy ZMF VOX STUDIO+ website" → Run workflow**.
+On iPhone, open it in Safari, then Share → **Add to Home Screen**.
 
 ## Other free static hosts
 `dist/` is a plain static site with relative paths, so it works under any sub-path.
