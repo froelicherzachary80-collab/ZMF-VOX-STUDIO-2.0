@@ -45,3 +45,10 @@ m = h.make_model(g, opset_imports=[h.make_opsetid('', 17)], ir_version=8)
 onnx.checker.check_model(m)
 onnx.save(m, f'{out}/voice.onnx')
 print('fixtures written to', out)
+
+# rmvpe.onnx fixture: mel [1,128,T] -> sigmoid(mel^T @ W) [1,T,360]  (plumbing test only)
+Wr = (rng.standard_normal((128, 360)) * 0.05).astype(np.float32)
+g = h.make_graph(
+    [h.make_node('Transpose', ['input'], ['t'], perm=[0, 2, 1]), h.make_node('MatMul', ['t', 'Wr'], ['m']), h.make_node('Sigmoid', ['m'], ['output'])],
+    'rmvpe', [h.make_tensor_value_info('input', T.FLOAT, [1, 128, 'T'])], [h.make_tensor_value_info('output', T.FLOAT, [1, 'T', 360])], [nh.from_array(Wr, 'Wr')])
+onnx.save(h.make_model(g, opset_imports=[h.make_opsetid('', 17)], ir_version=8), f'{out}/rmvpe.onnx')

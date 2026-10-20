@@ -13,12 +13,16 @@ import type * as ORT from 'onnxruntime-web';
 import { yin, smoothF0 } from '../audio/pitch';
 import { resample } from '../audio/pcm';
 import { coarsePitch, overlapAdd, shapeF0 } from './rvcMath';
+import { protectBlend, retrieveBlend, type FeatureBank } from './featureIndex';
+import { decodeSalience, rmvpeMel } from './rmvpeMath';
 
 export interface RvcModelSpec {
   contentModel: ArrayBuffer;   // ContentVec / HuBERT ONNX (input [1,1,N] @16 kHz)
   voiceModel: ArrayBuffer;     // RVC v1/v2 generator ONNX
   modelSampleRate: number;     // 32000 | 40000 | 48000 (from training config)
   speakerId?: number;
+  rmvpeModel?: ArrayBuffer;    // optional RMVPE ONNX (mel [1,128,T] -> salience [1,T,360])
+  bank?: FeatureBank;          // target-singer feature index
 }
 
 export interface RvcParams {
@@ -26,6 +30,9 @@ export interface RvcParams {
   f0Min: number; f0Max: number;
   octaveCorrection: boolean;
   pitchCorrection: number; vibrato: number; stability: number;
+  indexRate: number;           // 0..1 retrieval blend (needs a feature bank)
+  protect: number;             // 0..0.5 RVC protect for unvoiced frames (0.5 = off)
+  f0Method: 'yin' | 'rmvpe';
   chunkSeconds: number;
   crossfadeSeconds: number;
   backend: 'webgpu' | 'wasm';
@@ -48,6 +55,7 @@ export async function loadOrt(): Promise<typeof ORT> {
 export class RvcEngine {
   private content?: ORT.InferenceSession;
   private voice?: ORT.InferenceSession;
+  private rmvpe?: ORT.InferenceSession;
   backendUsed: string = 'none';
   constructor(private spec: RvcModelSpec) {}
 
@@ -56,6 +64,7 @@ export class RvcEngine {
     const tryEp = async (eps: string[]) => {
       this.content = await ort.InferenceSession.create(new Uint8Array(this.spec.contentModel), { executionProviders: eps });
       this.voice = await ort.InferenceSession.create(new Uint8Array(this.spec.voiceModel), { executionProviders: eps });
+      if (this.spec.rmvpeModel) this.rmvpe = await ort.InferenceSession.create(new Uint8Array(this.spec.rmvpeModel), { executionProviders: eps });
       return eps[0];
     };
     if (backend === 'webgpu' && 'gpu' in navigator) {
@@ -73,7 +82,21 @@ export class RvcEngine {
     };
   }
 
-  async release() { await this.content?.release(); await this.voice?.release(); this.content = this.voice = undefined; }
+  async release() { await this.content?.release(); await this.voice?.release(); await this.rmvpe?.release(); this.content = this.voice = this.rmvpe = undefined; }
+
+  get hasRmvpe() { return !!this.rmvpe; }
+  get bankInfo() { return this.spec.bank ? { count: this.spec.bank.count, dim: this.spec.bank.dim } : null; }
+
+  /** Content features for arbitrary 16 kHz audio (used to build a singer's feature bank). */
+  async extractFeatures(x16: Float32Array): Promise<{ data: Float32Array; frames: number; dim: number }> {
+    return this.contentFeatures(await loadOrt(), x16);
+  }
+
+  private async rmvpeF0(ort: typeof ORT, x16: Float32Array): Promise<Float32Array> {
+    const s = this.rmvpe!, { mel, frames, padded } = rmvpeMel(x16);
+    const r = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', mel, [1, 128, padded]) });
+    return decodeSalience(r[s.outputNames[0]].data as Float32Array, frames);
+  }
 
   private async contentFeatures(ort: typeof ORT, x16: Float32Array): Promise<{ data: Float32Array; frames: number; dim: number }> {
     const s = this.content!;
@@ -91,11 +114,13 @@ export class RvcEngine {
     const ort = await loadOrt();
     const feat = await this.contentFeatures(ort, x16);
     const T = feat.frames * 2; // RVC repeats 50 fps features to 100 fps
-    const phone = new Float32Array(T * feat.dim);
-    for (let t = 0; t < T; t++) phone.set(feat.data.subarray((t >> 1) * feat.dim, ((t >> 1) + 1) * feat.dim), t * feat.dim);
+    const orig = feat.data;
+    const used = this.spec.bank && p.indexRate > 0 ? retrieveBlend(orig.slice(), feat.frames, this.spec.bank, p.indexRate) : orig;
+    const up = (src: Float32Array) => { const o = new Float32Array(T * feat.dim); for (let t = 0; t < T; t++) o.set(src.subarray((t >> 1) * feat.dim, ((t >> 1) + 1) * feat.dim), t * feat.dim); return o; };
+    let phone = up(used);
 
-    const tr = yin(x16, 16000, { hop: 160, fmin: p.f0Min, fmax: p.f0Max });
-    const f0 = shapeF0(smoothF0(tr.f0), { correction: p.pitchCorrection, vibrato: p.vibrato, stability: p.stability });
+    const raw = p.f0Method === 'rmvpe' && this.rmvpe ? await this.rmvpeF0(ort, x16) : yin(x16, 16000, { hop: 160, fmin: p.f0Min, fmax: p.f0Max }).f0;
+    const f0 = shapeF0(smoothF0(raw), { correction: p.pitchCorrection, vibrato: p.vibrato, stability: p.stability });
     const pitchf = new Float32Array(T);
     const k = Math.pow(2, p.transpose / 12);
     for (let i = 0; i < T; i++) {
@@ -103,6 +128,7 @@ export class RvcEngine {
       if (p.octaveCorrection && v > 0) { while (v > p.f0Max) v /= 2; while (v < p.f0Min) v *= 2; }
       pitchf[i] = v;
     }
+    if (used !== orig) phone = protectBlend(phone, up(orig), pitchf, feat.dim, p.protect);
     const pitch = coarsePitch(pitchf);
     const rnd = new Float32Array(192 * T);
     for (let i = 0; i < rnd.length; i += 2) { // Box–Muller

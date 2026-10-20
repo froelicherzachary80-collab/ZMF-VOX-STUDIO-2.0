@@ -1,4 +1,4 @@
-# ZMF VOX STUDIO+ (v0.1)
+# ZMF VOX STUDIO+ (v0.2)
 
 A local-first AI singing studio that runs in the browser as a PWA. You import a song, separate it into stems, convert the vocal with an RVC voice model you're allowed to use, then edit, mix, master and export it. All of this happens on your device. There is no backend, no account, no API key, and nothing gets uploaded.
 
@@ -19,6 +19,13 @@ A local-first AI singing studio that runs in the browser as a PWA. You import a 
 | Zero-shot cloning from a short sample | ❌ | No browser-verified model. Not offered. |
 | On-device training | ❌ | RVC training needs a GPU for hours. Train elsewhere and import the model. |
 | Voice analysis profiles (F0 range, centroid, loudness) | ✅ | Clearly labelled **analysis-only**, never "trained" |
+| **v0.2 · Target-voice feature index** (RVC-style retrieval, k=8, 1/d² weights, index rate) | ✅ | Built on-device from the singer's own samples with their content encoder, using k-means. Can also import RVC `total_fea.npy`. Improves similarity of an *existing* trained model. It is not training. |
+| **v0.2 · RVC protect** (unvoiced-frame feature protection) | ✅ | Applied as in RVC, when an index is active |
+| **v0.2 · RMVPE pitch extractor adapter** | ⚠️ | Mel front-end and salience decode follow RVC's `rmvpe.py` and are unit-tested. Exercised only with a fixture model so far; not yet validated with a real `rmvpe.onnx`. |
+| **v0.2 · Speaker ID** for multi-speaker models | ✅ | |
+| **v0.2 · Recording quality checker** (clipping, SNR estimate, noise floor, DC, voiced %) + material-length advice | ✅ | |
+| **v0.2 · Timbre match score** after conversion | ✅ | MFCC-mean cosine to the singer's references. Coarse; this is **not** speaker verification. |
+| **v0.2 · RVC training-dataset export** (silence-split 3–12 s clips, normalised, .zip) | ✅ | Use it to train a real model off-device (PC or Colab), then import the ONNX |
 | HUMANVOICE engine (de-click, gate, EQ, de-ess, compression, saturation) + 9 presets | ✅ | Post-production DSP, labelled as such |
 | Piano-roll pitch editor (detect, move, bend, split/merge, vibrato, gain, undo/redo, A/B) | ✅ | Edits are re-rendered with a granular pitch shifter. Formants move with pitch. |
 | Harmony / doubling / octave layers / chorus / humanize / presets | ✅ | Labelled **algorithmic (DSP)**, not neural |
@@ -33,9 +40,9 @@ A local-first AI singing studio that runs in the browser as a PWA. You import a 
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 17 DSP/unit tests (Vitest)
+npm test             # 28 DSP/unit tests (Vitest)
 npm run build        # static site in dist/
-npm run e2e          # 19 end-to-end acceptance checks in headless Chromium (needs python3 + `pip install onnx` for fixtures)
+npm run e2e          # 24 end-to-end acceptance checks in headless Chromium (needs python3 + `pip install onnx` for fixtures)
 ```
 
 ### Getting a real voice working
@@ -43,9 +50,17 @@ npm run e2e          # 19 end-to-end acceptance checks in headless Chromium (nee
 2. Get a content encoder ONNX that matches the voice: **768-dim** for RVC v2, **256-dim** for v1, e.g. a ContentVec `vec-768-layer-12.onnx`. Input `[1,1,N]` at 16 kHz.
 3. **Model Manager** → confirm permission → import both files → **Test load**.
 4. **Voice Clone Lab** → create a singer → link both models and set the sample rate (32k/40k/48k) → Save.
-5. **AI Cover Studio** → import a song → separate → choose the singer → **Preview** (10–20 s) → **Render full vocal** → Mixer / Mastering / Export.
+5. *(v0.2, recommended)* **My AI Singers → Edit / upgrade**: add 1+ minutes of the singer's clean reference audio → **Build from samples** to create the feature index. Optionally link an `rmvpe.onnx`.
+6. **AI Cover Studio** → import a song → separate → choose the singer → **Preview** (10–20 s) → **Render full vocal** → Mixer / Mastering / Export.
 
-## Free static deployment
+## The website (GitHub Pages, free)
+`.github/workflows/deploy-pages.yml` runs the unit tests, builds the site and publishes it on every push to `main` (or this feature branch).
+**One-time setup (repo owner):** GitHub → repository **Settings → Pages → Build and deployment → Source: "GitHub Actions"**. After the next push (or **Actions → "Test & deploy website" → Run workflow**), the site is at
+`https://froelicherzachary80-collab.github.io/ZMF-VOX-STUDIO-2.0/`.
+If the deploy job says the branch isn't allowed, either merge to `main` or add the branch under **Settings → Environments → github-pages → Deployment branches**.
+On iPhone, open the URL in Safari → Share → **Add to Home Screen**.
+
+## Other free static hosts
 `dist/` is a plain static site with relative paths, so it works under any sub-path.
 - **Cloudflare Pages / Netlify:** build command `npm run build`, output `dist`. `public/_headers` sets COOP/COEP, which turns on multithreaded WASM.
 - **GitHub Pages:** publish `dist/`. Pages can't set COOP/COEP, so ONNX Runtime falls back to single-threaded WASM automatically. It's slower but works.

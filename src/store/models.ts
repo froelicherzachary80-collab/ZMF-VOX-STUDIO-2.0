@@ -1,6 +1,6 @@
 import { all, del, get, put, uid } from './db';
 
-export type ModelRole = 'rvc-voice' | 'content-encoder' | 'separation';
+export type ModelRole = 'rvc-voice' | 'content-encoder' | 'f0-rmvpe' | 'separation';
 export interface ModelRecord {
   id: string; name: string; role: ModelRole; size: number; sha256: string;
   sampleRate?: number; license: string; source: 'imported' | 'downloaded'; storedIn: 'opfs' | 'indexeddb';

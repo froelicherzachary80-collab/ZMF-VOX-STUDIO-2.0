@@ -44,6 +44,7 @@ export default function ModelManager() {
         <table><tbody>
           <tr><td>RVC v1/v2 voice (ONNX)</td><td>Inputs <code>phone [1,T,256|768], phone_lengths, pitch, pitchf, ds, rnd [1,192,T]</code> as produced by RVC's ONNX export. Must match the content encoder's feature dimension (v1 = 256, v2 = 768).</td></tr>
           <tr><td>Content encoder (ONNX)</td><td>ContentVec / HuBERT-base ONNX with input <code>[1,1,N]</code> 16 kHz audio → <code>[1,T,dim]</code> at 50 fps (e.g. <code>vec-768-layer-12.onnx</code>).</td></tr>
+          <tr><td>RMVPE (ONNX, optional)</td><td>Input log-mel <code>[1,128,T]</code> (16 kHz, hop 160, T padded to ×32) → salience <code>[1,T,360]</code>, as in RVC's <code>rmvpe.onnx</code>. <span className="tag warn">adapter not yet validated with the real file</span></td></tr>
           <tr><td>Separation</td><td><span className="tag warn">no ONNX adapter yet</span> — built-in DSP separation is used instead.</td></tr>
         </tbody></table>
         <p style={{ fontSize: 12, color: 'var(--muted)' }}>No weights are bundled. "Test load" proves the file opens in ONNX Runtime on this device; it does not prove every operator runs on WebGPU — conversion falls back to WASM if a session fails.</p>
@@ -51,7 +52,7 @@ export default function ModelManager() {
       <div className="card">
         <h3>Add a model</h3>
         <div className="grid">
-          <label className="field">Role<select value={role} onChange={(e) => setRole(e.target.value as ModelRole)}><option value="rvc-voice">RVC voice model</option><option value="content-encoder">Content encoder</option></select></label>
+          <label className="field">Role<select value={role} onChange={(e) => setRole(e.target.value as ModelRole)}><option value="rvc-voice">RVC voice model</option><option value="content-encoder">Content encoder</option><option value="f0-rmvpe">RMVPE pitch extractor</option></select></label>
           {role === 'rvc-voice' && <label className="field">Sample rate<select value={sr} onChange={(e) => setSr(+e.target.value)}>{[32000, 40000, 48000].map((r) => <option key={r}>{r}</option>)}</select></label>}
           <label className="field">License<input type="text" value={license} placeholder="e.g. MIT, CC-BY-4.0, own voice" onChange={(e) => setLicense(e.target.value)} /></label>
         </div>

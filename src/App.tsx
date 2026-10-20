@@ -36,7 +36,7 @@ export default function App() {
       <nav className={`drawer ${open ? 'open' : ''}`}>
         <h1>ZMF VOX <span>STUDIO+</span></h1>
         {ROUTES.map(([id, icon, name]) => <a key={id} className={route === id ? 'active' : ''} onClick={() => go(id)}><span style={{ width: 18, textAlign: 'center' }}>{icon}</span>{name}</a>)}
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '16px 12px' }}>v0.1 · all processing on-device</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '16px 12px' }}>v0.2 · all processing on-device</p>
       </nav>
       <div className={`scrim ${open ? 'open' : ''}`} onClick={() => setOpen(false)} />
       <main className="main" key={route}>

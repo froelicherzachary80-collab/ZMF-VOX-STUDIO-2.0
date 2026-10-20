@@ -1,6 +1,6 @@
 // ZMF VOX STUDIO+ service worker: precache app shell, cache-first for same-origin GETs.
 // Never intercepts or forwards cross-origin requests; never caches POST bodies (no audio leaves the device).
-const VERSION = 'zmf-v0.1.0';
+const VERSION = 'zmf-v0.2.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

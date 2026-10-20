@@ -6,6 +6,8 @@ import { humanVoice, type HumanVoiceSettings } from '../audio/humanvoice';
 import { RvcEngine, type RvcParams } from './rvc';
 import { loadModelBytes, listModels } from '../store/models';
 import type { Singer } from '../store/singers';
+import { loadBank } from './bank';
+import { voiceMatch } from '../audio/mfcc';
 
 export interface CoverSettings extends Omit<RvcParams, 'backend'> {
   voiceBlend: number;            // 0..1 wet amount of converted voice vs original vocal
@@ -16,20 +18,25 @@ export interface CoverSettings extends Omit<RvcParams, 'backend'> {
   previewStart: number;
 }
 
-export interface CoverResult { dry: PCM; processed: PCM; source: PCM; backend: string; seconds: number; measured: { spectralDiff: number; pitchCorrelation: number } }
+export interface CoverResult { dry: PCM; processed: PCM; source: PCM; backend: string; seconds: number; measured: { spectralDiff: number; pitchCorrelation: number }; match?: { sourceToTarget: number; convertedToTarget: number }; features: { f0: string; index: string; speakerId: number } }
 
 let cached: { key: string; engine: RvcEngine } | null = null;
 
 export async function getEngine(singer: Singer, backend: 'webgpu' | 'wasm'): Promise<RvcEngine> {
   if (singer.capability !== 'neural-rvc' || !singer.voiceModelId || !singer.contentModelId)
     throw new Error(`"${singer.name}" is an analysis-only profile. Neural conversion needs an imported RVC ONNX voice model + content encoder (Model Manager).`);
-  const key = `${singer.voiceModelId}|${singer.contentModelId}|${backend}`;
+  const key = `${singer.voiceModelId}|${singer.contentModelId}|${singer.rmvpeModelId ?? ''}|${singer.featureBankId ?? ''}|${singer.speakerId ?? 0}|${backend}`;
   if (cached?.key === key) return cached.engine;
   if (cached) { await cached.engine.release(); cached = null; } // keep only one model set in memory
   const models = await listModels();
   const vm = models.find((m) => m.id === singer.voiceModelId), cm = models.find((m) => m.id === singer.contentModelId);
   if (!vm || !cm) throw new Error('Linked model files are missing from local storage.');
-  const engine = new RvcEngine({ voiceModel: await loadModelBytes(vm), contentModel: await loadModelBytes(cm), modelSampleRate: singer.modelSampleRate ?? vm.sampleRate ?? 40000 });
+  const rm = singer.rmvpeModelId ? models.find((m) => m.id === singer.rmvpeModelId) : undefined;
+  const bank = singer.featureBankId ? await loadBank(singer.featureBankId) : undefined;
+  const engine = new RvcEngine({
+    voiceModel: await loadModelBytes(vm), contentModel: await loadModelBytes(cm), modelSampleRate: singer.modelSampleRate ?? vm.sampleRate ?? 40000,
+    speakerId: singer.speakerId ?? 0, rmvpeModel: rm ? await loadModelBytes(rm) : undefined, bank,
+  });
   await engine.load(backend);
   cached = { key, engine };
   return engine;
@@ -86,8 +93,13 @@ export async function runCover(vocal: PCM, singer: Singer, s: CoverSettings, bac
 
   // Evidence that conversion happened: spectral difference and pitch agreement vs. source
   const measured = measureConversion(mono, dryOut, sr);
+  const match = singer.timbreFingerprint ? voiceMatch(mono, dryOut, sr, Float32Array.from(singer.timbreFingerprint)) : undefined;
+  const features = {
+    f0: s.f0Method === 'rmvpe' && engine.hasRmvpe ? 'RMVPE' : s.f0Method === 'rmvpe' ? 'YIN (RMVPE model not linked)' : 'YIN',
+    index: engine.bankInfo && s.indexRate > 0 ? `${engine.bankInfo.count} vectors @ ${Math.round(s.indexRate * 100)}%` : 'off', speakerId: singer.speakerId ?? 0,
+  };
   onStage('Done', 1);
-  return { dry: { sampleRate: sr, channels: [dryOut] }, processed, source: { sampleRate: sr, channels: [mono] }, backend: engine.backendUsed, seconds: (performance.now() - t0) / 1000, measured };
+  return { match, features, dry: { sampleRate: sr, channels: [dryOut] }, processed, source: { sampleRate: sr, channels: [mono] }, backend: engine.backendUsed, seconds: (performance.now() - t0) / 1000, measured };
 }
 
 export function measureConversion(a: Float32Array, b: Float32Array, sr: number) {

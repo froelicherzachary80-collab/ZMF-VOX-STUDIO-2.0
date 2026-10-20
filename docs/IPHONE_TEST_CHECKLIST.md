@@ -17,3 +17,6 @@ Testing so far ran only in headless Chromium (Linux). Mark each item on a real d
 - [ ] Kill the app, reopen: project restored.
 - [ ] Airplane mode, reopen: app and project load, conversion works with cached models.
 - [ ] Safari Web Inspector → Network: no requests to other origins while processing.
+- [ ] v0.2: Edit / upgrade → Build feature index from 1–2 min of samples (note the time) → convert with index rate 0.75. Is the timbre match score higher than with index rate 0?
+- [ ] v0.2: Link a real `rmvpe.onnx`, Test load, convert with RMVPE. Melody correlation should be ≥ 0.9 on a clean vocal.
+- [ ] v0.2: Export a dataset .zip and open it in the Files app.

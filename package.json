@@ -1,6 +1,6 @@
 {
   "name": "zmf-vox-studio-plus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "prebuild": "node scripts/copy-ort.mjs",
     "predev": "node scripts/copy-ort.mjs",
-    "e2e": "node tests/e2e/e2e.mjs"
+    "e2e": "node tests/e2e/e2e.mjs",
+    "postbuild": "node scripts/postbuild.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

@@ -4,6 +4,7 @@ import { uid } from '../store/db';
 import { listModels, type ModelRecord } from '../store/models';
 import { listProjects, type Project } from '../store/project';
 import { ModelLinker } from './VoiceLab';
+import VoiceUpgrades from './VoiceUpgrades';
 import { download, Slider } from '../ui/components';
 import { HV_PRESETS } from '../audio/humanvoice';
 
@@ -43,11 +44,11 @@ export default function Singers({ go }: { go: (r: string) => void }) {
             <div className="card" key={s.id}>
               <div className="row">{s.avatar ? <img className="avatar" src={s.avatar} /> : <div className="avatar">{s.name[0]}</div>}<div><b>{s.name}</b><br /><small style={{ color: 'var(--muted)' }}>{s.voiceType} · {s.rangeLow}–{s.rangeHigh}</small></div></div>
               <p style={{ fontSize: 13 }}>{s.description}</p>
-              <span className={`tag ${s.capability === 'neural-rvc' ? 'ok' : 'warn'}`}>{s.capability === 'neural-rvc' ? `RVC ONNX · ${s.modelSampleRate} Hz` : 'analysis-only'}</span> {s.syntheticLabel && <span className="tag v">labelled synthetic</span>}
+              <span className={`tag ${s.capability === 'neural-rvc' ? 'ok' : 'warn'}`}>{s.capability === 'neural-rvc' ? `RVC ONNX · ${s.modelSampleRate} Hz` : 'analysis-only'}</span> {s.featureBankInfo && <span className="tag ok">index {s.featureBankInfo.vectors}</span>} {s.rmvpeModelId && <span className="tag ok">RMVPE</span>} {s.syntheticLabel && <span className="tag v">labelled synthetic</span>}
               {vm && <p style={{ fontSize: 12, color: 'var(--muted)' }}>Model: {vm.name} ({(vm.size / 1e6).toFixed(0)} MB, {vm.license})</p>}
               {s.recentProjects.length > 0 && <p style={{ fontSize: 12, color: 'var(--muted)' }}>Recent: {s.recentProjects.map((id) => projects.find((p) => p.id === id)?.name).filter(Boolean).join(', ') || '—'}</p>}
               <div className="row" style={{ marginTop: 8 }}>
-                <button className="btn small" onClick={() => setEdit(s)}>Edit</button>
+                <button className="btn small" onClick={() => setEdit(s)}>Edit / upgrade</button>
                 <button className="btn small" onClick={async () => { await saveSinger({ ...s, id: uid(), name: `${s.name} copy`, createdAt: Date.now(), recentProjects: [] }); refresh(); }}>Duplicate</button>
                 <button className="btn small" onClick={() => exportOne(s)}>Export</button>
                 <button className="btn small danger" onClick={async () => { if (confirm(`Delete ${s.name}?`)) { await deleteSinger(s.id); refresh(); } }}>Delete</button>
@@ -66,7 +67,8 @@ export default function Singers({ go }: { go: (r: string) => void }) {
           <label className="field">HUMANVOICE preset<select onChange={(e) => setEdit({ ...edit, defaultStyle: e.target.value, humanVoice: { ...HV_PRESETS[e.target.value] } })} value={edit.defaultStyle in HV_PRESETS ? edit.defaultStyle : ''}><option value="">custom</option>{Object.keys(HV_PRESETS).map((k) => <option key={k}>{k}</option>)}</select></label>
         </div></div>
         <div className="card"><h3>Voice model</h3><ModelLinker singer={edit} onChange={setEdit} /><p>Status: <span className={`tag ${edit.capability === 'neural-rvc' ? 'ok' : 'warn'}`}>{edit.capability}</span></p></div>
-        <button className="btn primary" onClick={async () => { await saveSinger(edit); setEdit(null); refresh(); }}>Save</button>
+        <VoiceUpgrades singer={edit} onChange={setEdit} />
+        <button className="btn primary" style={{ position: 'sticky', bottom: 8 }} onClick={async () => { await saveSinger(edit); setEdit(null); refresh(); }}>Save singer</button>
       </div>}
     </div>
   );

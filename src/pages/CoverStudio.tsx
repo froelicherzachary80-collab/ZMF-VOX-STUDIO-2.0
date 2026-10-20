@@ -25,7 +25,7 @@ export default function CoverStudio({ go }: { go: (r: string) => void }) {
   const abort = useRef<AbortController | null>(null);
   const q = st.quality === 'CUSTOM' ? QUALITY.BALANCED : QUALITY[st.quality];
   const [cs, setCs] = useState<CoverSettings>({
-    transpose: 0, f0Min: 65, f0Max: 1100, octaveCorrection: false, pitchCorrection: 0, vibrato: 1, stability: 0,
+    transpose: 0, f0Min: 65, f0Max: 1100, octaveCorrection: false, pitchCorrection: 0, vibrato: 1, stability: 0, indexRate: 0.75, protect: 0.33, f0Method: 'yin',
     chunkSeconds: q.chunkSeconds, crossfadeSeconds: q.crossfadeSeconds, voiceBlend: 1, consonantProtection: 0.3, expressionPreservation: 0.6,
     humanVoice: { ...HV_PRESETS['Natural Studio'] }, previewSeconds: q.previewSeconds, previewStart: 0,
   });
@@ -33,7 +33,7 @@ export default function CoverStudio({ go }: { go: (r: string) => void }) {
   const [rangeLow, setRangeLow] = useState('C3'); const [rangeHigh, setRangeHigh] = useState('C5');
   useEffect(() => { listSingers().then(setSingers); }, []);
   const singer = singers.find((s) => s.id === singerId);
-  useEffect(() => { if (singer) { setCs((c) => ({ ...c, transpose: singer.transpose, humanVoice: { ...singer.humanVoice } })); setRangeLow(singer.rangeLow); setRangeHigh(singer.rangeHigh); } }, [singerId]); // eslint-disable-line
+  useEffect(() => { if (singer) { setCs((c) => ({ ...c, transpose: singer.transpose, humanVoice: { ...singer.humanVoice }, indexRate: singer.indexRate ?? 0.75, protect: singer.protect ?? 0.33, f0Method: singer.f0Method ?? (singer.rmvpeModelId ? 'rmvpe' : 'yin') })); setRangeLow(singer.rangeLow); setRangeHigh(singer.rangeHigh); } }, [singerId]); // eslint-disable-line
   const set = <K extends keyof CoverSettings>(k: K, v: CoverSettings[K]) => setCs((c) => ({ ...c, [k]: v }));
   const hv = (k: keyof CoverSettings['humanVoice'], v: number | boolean) => setCs((c) => ({ ...c, humanVoice: { ...c.humanVoice, [k]: v } }));
 
@@ -142,6 +142,9 @@ export default function CoverStudio({ go }: { go: (r: string) => void }) {
           <Slider label="Vocal stability" min={0} max={1} step={0.05} value={cs.stability} onChange={(v) => set('stability', v)} note="F0 smoothing" />
           <Slider label="Consonant / unvoiced preservation" min={0} max={1} step={0.05} value={cs.consonantProtection} onChange={(v) => set('consonantProtection', v)} note="blend" />
           <Slider label="Original expression preservation" min={0} max={1} step={0.05} value={cs.expressionPreservation} onChange={(v) => set('expressionPreservation', v)} note="envelope" />
+          <label className="field">Pitch extractor<select value={cs.f0Method} onChange={(e) => set('f0Method', e.target.value as 'yin' | 'rmvpe')}><option value="yin">YIN (built-in DSP)</option><option value="rmvpe" disabled={!singer?.rmvpeModelId}>RMVPE (neural, {singer?.rmvpeModelId ? 'linked' : 'link model in singer'})</option></select></label>
+          <Slider label="Index rate (target-voice retrieval)" min={0} max={1} step={0.05} value={cs.indexRate} onChange={(v) => set('indexRate', v)} note={singer?.featureBankId ? `${singer.featureBankInfo?.vectors ?? '?'} vectors` : 'no index built'} disabled={!singer?.featureBankId} />
+          <Slider label="Protect (RVC, unvoiced features)" min={0} max={0.5} step={0.01} value={cs.protect} onChange={(v) => set('protect', v)} note="0.5 = off" disabled={!singer?.featureBankId} />
           <label className="field">Formant shift<span className="tag warn">Not supported by RVC ONNX path — disabled</span></label>
         </div>
         <h3 style={{ marginTop: 14 }}>HUMANVOICE ENGINE <span className="tag">post-production DSP</span></h3>
@@ -175,6 +178,8 @@ export default function CoverStudio({ go }: { go: (r: string) => void }) {
         </div>
         {result && <div style={{ marginTop: 10 }}>
           <div className="notice ok">Converted {result.source.channels[0].length / result.source.sampleRate | 0}s in {result.seconds.toFixed(1)}s on <b>{result.backend}</b>. Measured: log-spectral distance from source <b>{result.measured.spectralDiff.toFixed(1)} dB</b>, melody (log-F0) correlation <b>{isNaN(result.measured.pitchCorrelation) ? 'n/a' : result.measured.pitchCorrelation.toFixed(2)}</b>.</div>
+          <p style={{ fontSize: 13 }}>F0: <span className="tag v">{result.features.f0}</span> Index: <span className="tag v">{result.features.index}</span> Speaker ID: <span className="tag">{result.features.speakerId}</span></p>
+          {result.match && <div className={`notice ${result.match.convertedToTarget > result.match.sourceToTarget ? 'ok' : ''}`}>Timbre match to {singer?.name}'s reference samples (MFCC-mean cosine, coarse — not speaker verification): source <b>{result.match.sourceToTarget.toFixed(3)}</b> → converted <b>{result.match.convertedToTarget.toFixed(3)}</b> {result.match.convertedToTarget > result.match.sourceToTarget ? '(closer to target)' : '(not closer — try a higher index rate or a better-trained model)'}</div>}
           <h3>A/B comparison</h3>
           <div className="row"><PlayButton pcm={result.source} label="ab-src" text="Source voice" /><PlayButton pcm={result.dry} label="ab-dry" text="Dry converted" /><PlayButton pcm={result.processed} label="ab-proc" text="Processed" /><WavButton pcm={result.dry} name="converted-dry" /></div>
           <Waveform pcm={result.processed} playLabel="ab-proc" />

@@ -7,3 +7,4 @@ tests/fixtures/*.wav
 tests/fixtures/*.mp3
 tests/e2e/out
 *.tsbuildinfo
+tests/e2e/last-run.txt

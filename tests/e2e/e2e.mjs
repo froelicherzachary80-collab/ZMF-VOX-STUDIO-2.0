@@ -7,7 +7,7 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 
 const FIX = 'tests/fixtures', OUT = 'tests/e2e/out';
 mkdirSync(OUT, { recursive: true });
-if (!existsSync(`${FIX}/voice.onnx`)) execSync(`python3 scripts/make-test-models.py ${FIX}`, { stdio: 'inherit' });
+if (!existsSync(`${FIX}/rmvpe.onnx`)) execSync(`python3 scripts/make-test-models.py ${FIX}`, { stdio: 'inherit' });
 
 // --- Fixture audio (generated here => no third-party rights issues) ---
 const sr = 44100, sec = 12, n = sr * sec;
@@ -91,6 +91,8 @@ try {
   check('Load ONNX model in ONNX Runtime Web', true, await page.locator('small:has-text("Loaded on")').innerText());
   await page.click('tr:has-text("voice.onnx") button:has-text("Verify")'); await page.waitForSelector('text=integrity OK');
   check('Model integrity verify', true);
+  await page.selectOption('select >> nth=0', 'f0-rmvpe');
+  await page.setInputFiles('input[accept=".onnx"]', `${FIX}/rmvpe.onnx`); await page.waitForSelector('td:has-text("rmvpe.onnx")');
 
   // Singer
   await page.goto(BASE + '#lab'); await page.waitForSelector('text=Voice Clone Laboratory');
@@ -104,6 +106,23 @@ try {
   await page.waitForSelector('text=neural RVC singer');
   check('Create singer linked to neural model', true);
 
+  // Voice-clone upgrades
+  await page.goto(BASE + '#singers'); await page.click('button:has-text("Edit / upgrade")');
+  await page.waitForSelector('text=Voice clone upgrades');
+  await page.waitForSelector('text=1 samples');
+  const qtxt = await page.locator('details').first().innerText().catch(() => '');
+  check('Recording quality check', /good|check|issues/.test(qtxt), qtxt.split('\n')[0]);
+  await page.click('button:has-text("Build from samples")');
+  await page.waitForSelector('text=/index: \\d+ × 768/', { timeout: 120000 });
+  check('Build feature index from singer samples', true, await page.locator('span:has-text("index:")').first().innerText());
+  await page.selectOption('label:has-text("RMVPE model") select', { index: 1 });
+  await page.click('button:has-text("Compute fingerprint"), button:has-text("Recompute fingerprint")');
+  const [dz] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('button:has-text("Export dataset .zip")')]);
+  await dz.saveAs(`${OUT}/dataset.zip`);
+  let zl = ''; try { zl = execSync(`python3 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(len(z.namelist()))" ${OUT}/dataset.zip`).toString().trim(); } catch (e) { zl = 'invalid: ' + e.message; }
+  check('Export RVC training dataset zip', /^\d+$/.test(zl) && +zl >= 2, `${zl} files`);
+  await page.click('button:has-text("Save singer")'); await page.waitForSelector('text=RMVPE');
+
   // 7-9. Convert
   await page.goto(BASE + '#cover'); await page.waitForSelector('text=Select AI voice');
   const sSel = page.locator('.card:has-text("Select AI voice") select'); const sv = await sSel.locator('option').nth(1).getAttribute('value'); await sSel.selectOption(sv);
@@ -111,10 +130,20 @@ try {
   await page.click('button:has-text("Preview")');
   await page.waitForSelector('text=Converted', { timeout: 120000 });
   const note = await page.locator('.notice.ok').first().innerText();
-  const lsd = parseFloat(/distance from source ([\d.]+)/.exec(note)?.[1] ?? '0'), pc = parseFloat(/correlation ([\-\d.]+)/.exec(note)?.[1] ?? 'NaN');
+  const lsd = parseFloat(/distance from source ([\d.]+)/.exec(note)?.[1] ?? '0');
   check('Neural pipeline converts phrase (fixture model)', lsd > 3, note);
+  const feats = await page.locator('p:has-text("F0:")').innerText();
+  check('Upgrades active in conversion (RMVPE + index)', /RMVPE/.test(feats) && /vectors @/.test(feats), feats);
+  const mt = await page.locator('.notice:has-text("Timbre match")').innerText().catch(() => '');
+  check('Timbre match score reported', /source [\d.\-]+ → converted [\d.\-]+/.test(mt), mt.slice(0, 160));
   check('Measured timbre change', lsd > 3, `log-spectral distance ${lsd} dB`);
-  check('Melody preserved', pc > 0.8, `log-F0 correlation ${pc}`);
+  // The RMVPE fixture has random weights (plumbing only), so check melody with the YIN extractor.
+  await page.selectOption('label:has-text("Pitch extractor") select', 'yin');
+  await page.click('button:has-text("Preview")');
+  await page.waitForFunction(() => /F0: YIN/.test(document.body.innerText), null, { timeout: 120000 });
+  const note2 = await page.locator('.notice.ok').first().innerText();
+  const pc2 = parseFloat(/correlation ([\-\d.]+)/.exec(note2)?.[1] ?? 'NaN');
+  check('Melody preserved (YIN F0 + index retrieval)', pc2 > 0.8, `log-F0 correlation ${pc2}`);
   await page.click('button:has-text("Render full vocal")');
   await page.waitForSelector('text=Full converted vocal in project', { timeout: 180000 });
   check('Full-length conversion', true);

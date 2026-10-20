@@ -8,6 +8,10 @@ import { uid } from '../store/db';
 import { listModels, type ModelRecord } from '../store/models';
 import { newSinger, saveSinger, type Singer } from '../store/singers';
 import { PlayButton, Waveform } from '../ui/components';
+import { checkQuality } from '../audio/quality';
+import { QualityBadges } from './VoiceUpgrades';
+import { meanMfcc } from '../audio/mfcc';
+import { toMono } from '../audio/pcm';
 
 export const VOICE_STYLES: { name: string; kind: string }[] = [
   { name: 'Natural', kind: 'DSP preset' }, { name: 'Bright', kind: 'DSP EQ' }, { name: 'Dark', kind: 'DSP EQ' }, { name: 'Soft', kind: 'DSP dynamics' },
@@ -51,8 +55,10 @@ export default function VoiceLab({ go }: { go: (r: string) => void }) {
     if (!s.permissionConfirmed) { setErr('Confirm you own or have permission to use this voice.'); return; }
     const ids: string[] = [];
     for (const x of samples) { const id = uid(); await savePCM(id, x.pcm); ids.push(id); }
-    await saveSinger({ ...s, sampleAssetIds: [...s.sampleAssetIds, ...ids] });
-    setMsg(`Saved "${s.name}" as ${s.capability === 'neural-rvc' ? 'a neural RVC singer' : 'an analysis-only profile (not trained, cannot convert yet)'}.`);
+    const fps = samples.map((x) => meanMfcc(toMono(x.pcm), x.pcm.sampleRate));
+    const timbreFingerprint = fps.length ? Array.from(fps[0], (_, i) => fps.reduce((a, f) => a + f[i], 0) / fps.length) : undefined;
+    await saveSinger({ ...s, timbreFingerprint, sampleAssetIds: [...s.sampleAssetIds, ...ids] });
+    setMsg(`Saved "${s.name}" as ${s.capability === 'neural-rvc' ? 'a neural RVC singer' : 'an analysis-only profile (not trained, cannot convert yet)'}. Next: Edit / upgrade to build its feature index.`);
   };
   const avatar = (f?: File) => { if (!f) return; const r = new FileReader(); r.onload = () => setS((p) => ({ ...p, avatar: r.result as string })); r.readAsDataURL(f); };
   const a = s.analysis;
@@ -67,6 +73,7 @@ export default function VoiceLab({ go }: { go: (r: string) => void }) {
         <table><tbody>
           <tr><td><b>A. Voice analysis</b></td><td><span className="tag ok">implemented</span></td><td>Pitch range, median F0, spectral centroid, loudness, voiced ratio. Describes a voice; does not clone it.</td></tr>
           <tr><td><b>B. Zero-shot adaptation</b></td><td><span className="tag bad">not available</span></td><td>No zero-shot singing-VC model has been verified to run in iPhone Safari. Not offered rather than faked.</td></tr>
+          <tr><td><b>A+. Feature index</b></td><td><span className="tag ok">v0.2</span></td><td>After saving, open My AI Singers → Edit / upgrade to build an RVC-style retrieval index from these samples, link RMVPE, and export a training dataset.</td></tr>
           <tr><td><b>C. Trained voice model</b></td><td><span className="tag ok">import</span></td><td>Import an RVC v1/v2 model exported to ONNX (trained elsewhere, e.g. RVC WebUI on a PC). In-browser training is not implemented — RVC training needs minutes of audio and GPU hours.</td></tr>
         </tbody></table>
       </div>
@@ -77,7 +84,7 @@ export default function VoiceLab({ go }: { go: (r: string) => void }) {
       <div className="card">
         <h3>Samples</h3>
         <div className="row"><label className="btn">Add WAV/MP3…<input hidden multiple type="file" accept="audio/*" onChange={(e) => add(e.target.files)} /></label><button className={`btn ${rec ? 'danger' : ''}`} onClick={record}>{rec ? '■ Stop recording' : '● Record'}</button><button className="btn primary" disabled={!samples.length} onClick={runAnalysis}>Analyse voice</button></div>
-        {samples.map((x, i) => <div key={i} style={{ marginTop: 8 }}><div className="row" style={{ justifyContent: 'space-between' }}><small>{x.name} · {(x.pcm.channels[0].length / x.pcm.sampleRate).toFixed(1)}s</small><div className="row"><PlayButton pcm={x.pcm} label={`smp${i}`} /><button className="btn small danger" onClick={() => setSamples((v) => v.filter((_, k) => k !== i))}>✕</button></div></div><Waveform pcm={x.pcm} height={50} /></div>)}
+        {samples.map((x, i) => <div key={i} style={{ marginTop: 8 }}><div className="row" style={{ justifyContent: 'space-between' }}><small>{x.name} · {(x.pcm.channels[0].length / x.pcm.sampleRate).toFixed(1)}s</small><div className="row"><PlayButton pcm={x.pcm} label={`smp${i}`} /><button className="btn small danger" onClick={() => setSamples((v) => v.filter((_, k) => k !== i))}>✕</button></div></div><Waveform pcm={x.pcm} height={50} /><QualityBadges r={checkQuality(x.pcm)} /></div>)}
         {a && <div className="stats" style={{ marginTop: 10 }}>
           <div className="stat"><small>Median F0</small><b>{a.medianF0.toFixed(0)} Hz</b></div>
           <div className="stat"><small>Range (5–95%)</small><b>{midiName(a.rangeLowMidi)}–{midiName(a.rangeHighMidi)}</b></div>

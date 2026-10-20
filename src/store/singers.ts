@@ -12,6 +12,10 @@ export interface Singer {
   /** Capability is explicit: an analysis-only profile is never reported as trained. */
   capability: 'analysis-only' | 'neural-rvc';
   voiceModelId?: string; contentModelId?: string; modelSampleRate?: number;
+  /** v0.2 voice-clone upgrades */
+  speakerId?: number; rmvpeModelId?: string; f0Method?: 'yin' | 'rmvpe';
+  featureBankId?: string; featureBankInfo?: { vectors: number; sourceFrames: number; dim: number; source: 'samples' | 'npy'; builtAt: number };
+  indexRate?: number; protect?: number; timbreFingerprint?: number[];
   sampleAssetIds: string[]; analysis?: VoiceAnalysis;
   humanVoice: HumanVoiceSettings; transpose: number;
   permissionConfirmed: boolean; syntheticLabel: boolean; recentProjects: string[];
