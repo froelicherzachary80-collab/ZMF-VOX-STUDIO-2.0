@@ -1,0 +1,8 @@
+node_modules
+dist
+*.log
+public/ort
+tests/fixtures/*.onnx
+tests/fixtures/*.wav
+tests/fixtures/*.mp3
+tests/e2e/out

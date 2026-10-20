@@ -1,0 +1,11 @@
+import { chromium } from 'playwright-core';
+import { spawn } from 'node:child_process';
+const s = spawn('npx', ['vite', 'preview', '--port', '4174'], { cwd: '/home/user/ZMF-VOX-STUDIO-2.0' });
+await new Promise((r) => setTimeout(r, 2500));
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell' });
+const p = await b.newPage({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await p.goto('http://localhost:4174/#cover'); await p.setInputFiles('input[type=file]', '/home/user/ZMF-VOX-STUDIO-2.0/tests/fixtures/song.wav');
+await p.waitForSelector('text=Est. BPM'); await p.screenshot({ path: process.argv[2] + '/m1.png' });
+await p.click('.burger'); await p.waitForTimeout(400); await p.screenshot({ path: process.argv[2] + '/m2.png' });
+const w = await p.evaluate(() => document.documentElement.scrollWidth); console.log('scrollWidth', w);
+await b.close(); s.kill();
